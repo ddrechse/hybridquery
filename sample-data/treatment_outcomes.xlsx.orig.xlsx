@@ -1,0 +1,12 @@
+# This is a placeholder for the Excel file
+# In a real implementation, you would create an actual .xlsx file
+# For the POC, we'll provide CSV data that represents what would be in Excel
+
+Treatment Name,Condition Treated,Success Rate,Study Year,Sample Size,Side Effects
+Metformin,Type 2 Diabetes,85%,2023,1500,Mild GI upset
+Insulin Therapy,Type 1 Diabetes,95%,2023,800,Hypoglycemia risk
+GLP-1 Agonists,Type 2 Diabetes,78%,2023,1200,Nausea
+SGLT2 Inhibitors,Type 2 Diabetes,82%,2023,1000,UTI risk
+Sulfonylureas,Type 2 Diabetes,70%,2022,900,Weight gain
+DPP-4 Inhibitors,Type 2 Diabetes,75%,2023,850,Joint pain
+Basal Insulin,Type 2 Diabetes,88%,2023,1100,Injection site reactions

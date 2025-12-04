@@ -1,0 +1,15 @@
+treatment_name,effectiveness_score,side_effect_risk,monthly_cost,fda_approval_year,recommended_min_age,recommended_max_age
+GLP-1 Agonists,8.5,2.0,450,2005,18,85
+SGLT2 Inhibitors,8.0,1.5,380,2013,18,90
+DPP-4 Inhibitors,7.2,1.2,320,2006,18,95
+Insulin Therapy,7.8,2.5,120,1982,0,999
+Basal Insulin,7.5,2.3,95,1990,0,999
+Metformin,7.5,1.0,25,1995,18,80
+Sulfonylureas,6.8,2.8,35,1984,18,75
+Semaglutide,9.0,2.1,500,2017,18,85
+Liraglutide,8.3,2.0,475,2010,18,85
+Empagliflozin,8.2,1.4,395,2014,18,90
+Dapagliflozin,7.9,1.6,385,2014,18,90
+Canagliflozin,7.8,1.7,390,2013,18,90
+Sitagliptin,7.0,1.1,310,2006,18,95
+Linagliptin,7.1,1.2,325,2011,18,95

@@ -1,0 +1,16 @@
+# Python dependencies for Docling document processing
+
+# Docling - Universal document processing
+docling>=1.0.0
+
+# Additional NLP and data processing
+spacy>=3.5.0
+pandas>=2.0.0
+openpyxl>=3.1.0  # For Excel file processing
+
+# Oracle database connectivity
+oracledb>=1.4.0
+
+# Optional: For enhanced entity extraction
+transformers>=4.30.0
+torch>=2.0.0
