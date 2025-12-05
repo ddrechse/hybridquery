@@ -183,7 +183,3 @@ UNION ALL
 SELECT 'TREATS edges', COUNT(*) FROM treats_edges;
 
 PROMPT
-PROMPT ============================================================================
-PROMPT Next step: Run 05_test_queries.sql to test hybrid queries
-PROMPT ============================================================================
-PROMPT

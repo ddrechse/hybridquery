@@ -24,7 +24,7 @@ Find elderly patients with Type 2 Diabetes and recommend treatments that are:
 - Age-appropriate and cost-effective (filtering at database layer)
 
 ```sql
--- The "Showstopper" 3-Way Hybrid Query
+-- The 3-Way Hybrid Query
 SELECT
     p.customer_name,
     p.age,
@@ -117,8 +117,10 @@ CREATE PROPERTY GRAPH (medical_literature_kg)
 ### Prerequisites
 
 - **Oracle Database 23ai or later** (with Property Graph support)
-- **Python 3.8+** (optional - only needed for custom document processing)
 - **SQL*Plus or SQLcl** (for running Oracle scripts)
+- **Python 3.8+** (optional - only needed for custom document processing)
+
+**About Oracle Database 23ai Free:** This POC uses the Oracle Database 23ai Free edition, a multi-platform containerized version that includes full Property Graph support. It's available at no cost for development, testing, and learning. Learn more at [Gerald Venzl's blog](https://www.geraldonit.com/oracle-database-23-6-free-available/).
 
 **Note:** The sample data is already embedded in the SQL scripts, so you don't need to load CSV files manually. The SQL scripts will create and populate all tables automatically.
 
@@ -126,50 +128,68 @@ CREATE PROPERTY GRAPH (medical_literature_kg)
 
 #### 1. Clone and Navigate
 ```bash
-cd /path/to/data-refactoring-advisor/hands-on-lab/hybridQuery
+git clone git@github.com:ddrechse/hybridquery.git
+cd hybridquery
 ```
 
-#### 2. Install Python Dependencies
-```bash
-cd docling-processing
-pip install -r requirements.txt
-cd ..
-```
+#### 2. Set Up Oracle Database
 
-#### 3. Set Up Oracle Database
+**Docker Setup (Recommended)**
 
-Run the SQL scripts in order:
+Start Oracle Database 23ai Free using Docker:
 
 ```bash
-# Connect to your Oracle database
-sqlplus username/password@database
-
-# Run setup scripts for 3-way hybrid query
-@oracle-setup/01_create_relational_tables.sql    # Create PATIENTS table
-@load_extracted_graph_data.sql                   # Load graph from extracted PDF (14 treatments)
-@load_clinical_outcomes.sql                      # Load clinical trial outcomes (14 treatments)
-@three_way_hybrid_query.sql                      # Run 5 demo queries
+docker run -d -p 1521:1521 -e ORACLE_PASSWORD=Welcome12345 gvenzl/oracle-free:latest-faststart
 ```
+
+connect with sqlcl:
+
+```bash
+sql system/Welcome12345@localhost:1521/FREEPDB1
+```
+
+**Load the Data**
+
+**Step 1: Create Relational Tables**
+```bash
+@oracle-setup/01_create_relational_tables.sql
+```
+What it does: Creates the PATIENTS table with patient demographics, diagnoses, and physician assignments. This is the relational foundation for the POC, storing 10 patient records (8 elderly patients with Type 2 Diabetes).
+
+**Step 2: Create Graph Tables**
+```bash
+@oracle-setup/02_create_graph_tables.sql
+```
+What it does: Creates the node and edge tables for the property graph. Node tables include PAPERS_NODES (research documents), TREATMENTS_NODES (medical treatments), and CONDITIONS_NODES (diseases). Edge tables include MENTIONS_EDGES (paper→treatment) and TREATS_EDGES (treatment→condition).
+
+**Step 3: Create Property Graph**
+```bash
+@oracle-setup/03_create_property_graph.sql
+```
+What it does: Defines the MEDICAL_LITERATURE_KG property graph using Oracle's CREATE PROPERTY GRAPH DDL. This creates a graph view over the node and edge tables, enabling graph traversal queries with the GRAPH_TABLE operator.
+
+**Step 4: Load Sample Data**
+```bash
+@oracle-setup/04_load_sample_data.sql
+```
+What it does: Loads embedded sample data into all tables. Inserts 1 research paper, 7 treatments (Metformin, GLP-1 Agonists, etc.), 2 conditions (Type 1/2 Diabetes), and the relationships between them (7 MENTIONS edges, 8 TREATS edges).
+
+**Step 5: Load Clinical Outcomes**
+```bash
+@load_clinical_outcomes.sql
+```
+What it does: Loads clinical trial outcome data for 14 treatments including effectiveness scores (0-10), side effect risk (0-5), monthly costs, FDA approval years, and recommended age ranges. This enables the 3-way hybrid queries combining patients + graph + clinical data.
 
 **Expected Output:**
 - ✅ 10 patient records loaded (8 elderly with Type 2 Diabetes)
-- ✅ 14 treatment nodes created from PDF extraction
-- ✅ 1 condition node created (Type 2 Diabetes)
-- ✅ 18 edges created (14 MENTIONS + 4 TREATS)
-- ✅ 14 clinical outcome records loaded (effectiveness, safety, cost)
-- ✅ Property graph MEDICAL_LITERATURE_KG created
+- ✅ Property graph with 6 treatments created
+- ✅ 6 test queries executed successfully
+- ✅ 14 clinical outcome records loaded
+- ✅ 5 three-way hybrid queries executed
 
-**Alternative (Embedded Sample Data):**
-If you prefer the original embedded sample data approach:
-```bash
-@oracle-setup/01_create_relational_tables.sql
-@oracle-setup/02_create_graph_tables.sql
-@oracle-setup/03_create_property_graph.sql
-@oracle-setup/04_load_sample_data.sql
-@oracle-setup/05_test_queries.sql    # Alternative: 2-way hybrid query examples
-```
+> 💡 **For production use with real PDF extraction**, see the [Production Pipeline](#-production-pipeline-pdf-extraction-with-docling-and-docker-volumes) section below.
 
-#### 4. Test the 3-Way Hybrid Query
+#### 3. Test the 3-Way Hybrid Query
 
 The main 3-way hybrid query from `three_way_hybrid_query.sql`:
 
@@ -201,7 +221,7 @@ ORDER BY p.age DESC, co.effectiveness_score DESC, co.monthly_cost ASC;
 ```
 
 **Expected Result:**
-- Returns **32 rows** (8 elderly patients × 4 treatments that treat Type 2 Diabetes)
+- Returns **56 rows** (8 elderly patients × 7 treatments that treat Type 2 Diabetes)
 - Each row shows: patient info + treatment + effectiveness + safety + cost + evidence source
 - Demonstrates seamless 3-way join: relational + graph + relational
 
@@ -210,6 +230,325 @@ ORDER BY p.age DESC, co.effectiveness_score DESC, co.monthly_cost ASC;
 - Query 3: Age-appropriate recommendations (matches patient age with trial age ranges)
 - Query 4: Cost-effectiveness analysis (ranks treatments by value: effectiveness per dollar)
 - Query 5: Clinical decision support (personalized ranked recommendations using RANK() OVER)
+
+---
+
+## 📄 Production Pipeline: PDF Extraction with Docling and Docker Volumes
+
+### Overview
+
+The Quick Start above uses **embedded sample data** for simplicity. For production use cases where you need to process real PDF research papers and extract custom knowledge graphs, this section explains the complete pipeline using Docling and Docker volume mounting.
+
+**What is Docling?**
+
+[Docling](https://www.docling.ai/) is an advanced PDF parsing library that extracts structured content from documents, including text, tables, and metadata. This POC uses Docling to:
+- Parse medical research PDFs
+- Extract treatment names, conditions, and relationships
+- Generate structured CSV files for Oracle Property Graph loading
+
+**When to use this approach:**
+- ✅ Processing your own research papers
+- ✅ Extracting custom medical entities
+- ✅ Scaling to 100+ documents
+- ✅ Production deployments with real data
+
+**When to use Quick Start instead:**
+- ✅ Learning Oracle hybrid queries
+- ✅ Quick demos and presentations
+- ✅ Testing the concept with sample data
+
+---
+
+### The Complete Pipeline
+
+```
+Your PDF Document
+    ↓
+[Docling Parser] → Extract text and structure
+    ↓
+[Entity Recognition] → Find treatments, conditions using regex
+    ↓
+[Graph Builder] → Generate 5 CSV files (nodes + edges)
+    ↓
+[Docker Volume Mount] → Share files between host and container
+    ↓
+[Oracle External Tables] → Load CSVs into Oracle
+    ↓
+[Property Graph] → Create MEDICAL_LITERATURE_KG
+    ↓
+[Hybrid Queries] → Query relational + graph data
+```
+
+---
+
+### Step 1: Docker Setup with Volume Mounting
+
+To use extracted PDF data, you need to mount your local directory into the Oracle container so it can access the CSV files.
+
+**Stop your existing container** (if running):
+```bash
+docker stop oracle23ai  # Or your container name
+docker rm oracle23ai
+```
+
+**Start Oracle with volume mount:**
+```bash
+docker run -d \
+  --name oracle23ai \
+  -p 1521:1521 \
+  -e ORACLE_PASSWORD=Welcome12345 \
+  -v $(pwd)/extractPDF/output:/opt/oracle/graph_data \
+  gvenzl/oracle-free:latest-faststart
+```
+
+**What this does:**
+- `-v $(pwd)/extractPDF/output:/opt/oracle/graph_data` - Mounts your local `extractPDF/output` directory to `/opt/oracle/graph_data` inside the container
+- The Oracle database can now read CSV files from this mounted directory
+- Changes to files on your host immediately appear inside the container
+
+**Verify the mount:**
+```bash
+# Check files are accessible inside container
+docker exec oracle23ai ls -la /opt/oracle/graph_data
+```
+
+You should see your CSV files if they exist (or empty directory if not yet generated).
+
+---
+
+### Step 2: Install Python Dependencies
+
+```bash
+cd extractPDF
+pip install -r requirements.txt
+```
+
+**What gets installed:**
+- `docling` - PDF parsing and structure extraction
+- `spacy` - Natural language processing
+- `pandas` - Data manipulation for CSV generation
+
+---
+
+### Step 3: Extract Entities from PDF
+
+```bash
+# Extract from the sample diabetes PDF
+python extract_pdf_to_graph.py ../sample-data/diabetes-treatment-study.pdf
+
+# Or process your own PDF
+python extract_pdf_to_graph.py /path/to/your/research-paper.pdf
+
+# Optional: specify publication date
+python extract_pdf_to_graph.py paper.pdf --date 2023-01-15
+```
+
+**What happens:**
+1. Docling parses the PDF structure
+2. Entity patterns (from `entity_patterns.py`) identify:
+   - Treatment names (GLP-1 Agonists, Metformin, etc.)
+   - Condition names (Type 2 Diabetes, etc.)
+   - Relationships (MENTIONS, TREATS)
+3. Graph builder generates 5 CSV files with LF line endings
+
+**Output files** (in `extractPDF/output/`):
+- `papers_nodes.csv` - Paper metadata
+- `treatments_nodes.csv` - Treatment entities
+- `conditions_nodes.csv` - Medical conditions
+- `mentions_edges.csv` - Paper → Treatment edges
+- `treats_edges.csv` - Treatment → Condition edges
+
+---
+
+### Step 4: Verify CSV Output
+
+```bash
+# Check that all 5 files were created
+ls -la extractPDF/output/
+
+# Preview the data
+head extractPDF/output/papers_nodes.csv
+head extractPDF/output/treatments_nodes.csv
+```
+
+**Example CSV structure:**
+
+**papers_nodes.csv:**
+```csv
+node_id,filename,title,publication_date
+1,diabetes-treatment-study.pdf,"Comparative Effectiveness of Diabetes Treatments",2023-01-01
+```
+
+**treatments_nodes.csv:**
+```csv
+node_id,entity_name,treatment_type
+100,GLP-1 Agonists,Pharmaceutical
+101,SGLT2 Inhibitors,Pharmaceutical
+102,Metformin,Pharmaceutical
+```
+
+**treats_edges.csv:**
+```csv
+edge_id,from_node_id,to_node_id
+2000,100,200
+2001,101,200
+```
+
+**Important:** CSVs must use LF (Unix) line endings, not CRLF (Windows). The `graph_builder.py` script handles this automatically with `newline=''` parameter.
+
+---
+
+### Step 5: Load Extracted Data into Oracle
+
+With the Docker volume mounted and CSVs generated, connect to Oracle and load the data:
+
+```bash
+# Connect to Oracle (wait 1-2 minutes after docker start)
+sql system/Welcome12345@localhost:1521/FREEPDB1
+```
+
+**Run the loading script:**
+```sql
+@load_extracted_graph_data.sql
+```
+
+**What this script does:**
+
+1. **Creates Oracle Directory Object**
+   ```sql
+   CREATE OR REPLACE DIRECTORY extractpdf_dir AS '/opt/oracle/graph_data';
+   ```
+
+2. **Creates External Tables** pointing to CSV files
+   - External tables let Oracle read CSVs directly without importing
+   - Uses `SKIP 1` to skip header row
+   - Uses `OPTIONALLY ENCLOSED BY '"'` for quoted fields
+
+3. **Loads data into permanent tables**
+   ```sql
+   INSERT INTO papers_nodes SELECT * FROM papers_nodes_ext;
+   INSERT INTO treatments_nodes SELECT * FROM treatments_nodes_ext;
+   -- etc.
+   ```
+
+4. **Creates Property Graph**
+   ```sql
+   CREATE PROPERTY GRAPH medical_literature_kg
+     VERTEX TABLES (papers_nodes AS Paper, ...)
+     EDGE TABLES (mentions_edges AS MENTIONS, treats_edges AS TREATS, ...);
+   ```
+
+5. **Tests the graph** with a sample query
+
+**Expected output:**
+```
+Papers: 1 row
+Treatments: 14 rows
+Conditions: 1 row
+MENTIONS edges: 14 rows
+TREATS edges: 4 rows
+Property graph MEDICAL_LITERATURE_KG created successfully!
+```
+
+---
+
+### Step 6: Load Clinical Outcomes and Run Queries
+
+```sql
+@load_clinical_outcomes.sql
+@three_way_hybrid_query.sql
+```
+
+Now you have the complete 3-way hybrid setup with **real extracted data** from your PDF!
+
+---
+
+### Comparison: Embedded vs Extracted Data
+
+| Aspect | Embedded Data (Quick Start) | PDF Extraction (Production) |
+|--------|----------------------------|----------------------------|
+| **Setup Time** | 5 minutes | 15-20 minutes |
+| **Data Source** | Hardcoded in SQL | Real PDF files |
+| **Treatments** | 6 (fixed) | 14 from diabetes PDF (variable) |
+| **Flexibility** | None | Process any PDF |
+| **Docker Setup** | Simple (no volumes) | Requires volume mount |
+| **Use Case** | Demos, learning | Production, research |
+| **Scalability** | Single dataset | 100+ PDFs |
+
+---
+
+### Troubleshooting
+
+**Problem:** `ORA-29280: invalid directory path`
+```
+ORA-29280: invalid directory path
+```
+**Solution:** The Docker volume isn't mounted correctly. Restart the container with the `-v` flag as shown in Step 1.
+
+**Problem:** External table error - file not found
+```
+KUP-04040: file papers_nodes.csv in extractpdf_dir not found
+```
+**Solution:**
+1. Verify CSV files exist: `ls extractPDF/output/`
+2. Check Docker mount: `docker exec oracle23ai ls /opt/oracle/graph_data`
+3. Ensure container was started with volume mount
+
+**Problem:** Line ending issues (CRLF)
+```
+KUP-04021: field formatting error for field FILENAME
+```
+**Solution:** CSVs have Windows line endings. The `graph_builder.py` script prevents this, but if you edited files manually:
+```bash
+# Convert CRLF to LF (Mac/Linux)
+dos2unix extractPDF/output/*.csv
+
+# Or use sed
+sed -i 's/\r$//' extractPDF/output/*.csv
+```
+
+**Problem:** No data extracted from PDF
+```
+Extracted 0 treatments, 0 conditions
+```
+**Solution:**
+1. Check PDF is readable: `python extract_pdf_to_graph.py --debug paper.pdf`
+2. Customize entity patterns in `entity_patterns.py` for your domain
+3. Ensure PDF contains actual text (not scanned images)
+
+**Problem:** Permission denied accessing volume
+```
+Permission denied: '/opt/oracle/graph_data'
+```
+**Solution:** Check directory permissions on your host:
+```bash
+chmod 755 extractPDF/output
+```
+
+---
+
+### Customizing Entity Extraction
+
+To extract different treatments or conditions, edit `extractPDF/entity_patterns.py`:
+
+```python
+# Add your treatments here
+self.known_treatments = [
+    'GLP-1 Agonists',
+    'SGLT2 Inhibitors',
+    'Your Custom Treatment',  # Add here
+]
+
+# Add your conditions here
+self.known_conditions = [
+    'Type 2 Diabetes',
+    'Your Custom Condition',  # Add here
+]
+```
+
+For non-medical domains (legal, financial, etc.), modify the regex patterns to match your terminology.
+
+See [`extractPDF/README.md`](extractPDF/README.md) for complete extraction documentation.
 
 ---
 
@@ -261,74 +600,29 @@ hybridQuery/
 
 ---
 
-## 🔬 Advanced: Processing Your Own PDFs
+## 🔬 Advanced: Customizing Entity Extraction
 
-For motivated users who want to extract knowledge graphs from their own medical research papers.
+> 📌 **Note:** For the complete production pipeline setup including Docker volumes and step-by-step instructions, see the [Production Pipeline](#-production-pipeline-pdf-extraction-with-docling-and-docker-volumes) section above.
+
+This section focuses on **customizing the entity extraction** for your specific domain or use case.
 
 ### Overview
 
-The demo uses pre-extracted data for quick setup, but the `extractPDF/` pipeline enables you to process your own PDFs using Docling. This is the **production workflow** used to create the graph data in this POC.
+The `extractPDF/` pipeline uses configurable regex patterns to extract entities from PDFs. You can customize these patterns to:
+- Add new treatments or medications
+- Recognize domain-specific terminology (legal, financial, etc.)
+- Adjust relationship detection logic
+- Handle different document structures
 
-### The Extraction Pipeline
+### Customization Architecture
 
 ```
-Your PDF → Docling → Entity Extraction → 5 CSV Files → Oracle Property Graph
+extract_pdf_to_graph.py (orchestration)
+    ↓
+entity_patterns.py (CUSTOMIZE HERE) ← Your patterns
+    ↓
+graph_builder.py (CSV generation)
 ```
-
-### Step-by-Step Guide
-
-#### Step 1: Install Dependencies
-
-```bash
-cd extractPDF
-pip install -r requirements.txt
-```
-
-This installs:
-- **Docling** - Advanced PDF parsing library
-- **spaCy** - Natural language processing
-- **pandas** - Data manipulation
-
-#### Step 2: Run the Extraction
-
-```bash
-python extract_pdf_to_graph.py ../sample-data/your-research-paper.pdf
-```
-
-Optional parameters:
-```bash
-python extract_pdf_to_graph.py paper.pdf --date 2023-01-15  # Specify publication date
-python extract_pdf_to_graph.py paper.pdf --output my_output # Custom output directory
-```
-
-#### Step 3: Review CSV Output
-
-The script generates **5 CSV files** in `extractPDF/output/`:
-
-| File | Purpose | Example Row |
-|------|---------|-------------|
-| `papers_nodes.csv` | Paper metadata | `1,diabetes-treatment-study.pdf,"Comparative Effectiveness...",2023-01-01` |
-| `treatments_nodes.csv` | Treatment entities | `100,GLP-1 Agonists,Pharmaceutical` |
-| `conditions_nodes.csv` | Medical conditions | `200,Type 2 Diabetes,E11` |
-| `mentions_edges.csv` | Paper→Treatment links | `1000,1,100` (paper 1 mentions treatment 100) |
-| `treats_edges.csv` | Treatment→Condition links | `2000,100,200` (treatment 100 treats condition 200) |
-
-**Note:** CSV files use LF (Unix) line endings for Oracle compatibility.
-
-#### Step 4: Load into Oracle
-
-```bash
-# From inside Docker container or with volume mount
-docker exec -it oracle23ai sqlplus system/oracle@FREEPDB1
-@load_extracted_graph_data.sql
-```
-
-The SQL script will:
-- Create Oracle directory object (`/opt/oracle/graph_data/`)
-- Create external tables for each CSV
-- Load data into permanent tables
-- Create property graph `MEDICAL_LITERATURE_KG`
-- Run test query
 
 ### How Entity Extraction Works
 

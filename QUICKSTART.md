@@ -7,9 +7,9 @@ This guide gets you from zero to running 3-way hybrid queries (patients + graph 
 
 ## Prerequisites
 
-✅ Oracle Database 23ai or later
+✅ Oracle Database 23ai or later (Docker setup provided below)
 ✅ SQL*Plus or SQLcl installed
-✅ Database connection credentials
+✅ Python 3.8+ (optional - only for custom PDF processing)
 
 ---
 
@@ -17,12 +17,24 @@ This guide gets you from zero to running 3-way hybrid queries (patients + graph 
 
 ### Step 1: Navigate to the project
 ```bash
-cd /path/to/data-refactoring-advisor/hands-on-lab/hybridQuery
+cd /path/to/hybridquery
 ```
 
-### Step 2: Connect to Oracle
+### Step 2: Start Oracle Database
+
+**Using Docker (Recommended):**
 ```bash
-sqlplus username/password@database
+docker run -d -p 1521:1521 -e ORACLE_PASSWORD=Welcome12345 gvenzl/oracle-free:latest-faststart
+```
+
+Wait 1-2 minutes for startup, then connect:
+```bash
+sqlplus system/Welcome12345@localhost:1521/FREEPDB1
+```
+
+**Using Existing Oracle Instance:**
+```bash
+sqlplus username/password@your_database
 ```
 
 ### Step 3: Load patient data

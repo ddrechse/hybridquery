@@ -18,7 +18,7 @@ BEGIN
     EXECUTE IMMEDIATE 'DROP PROPERTY GRAPH medical_literature_kg';
 EXCEPTION
     WHEN OTHERS THEN
-        IF SQLCODE != -40926 THEN  -- ORA-40926: property graph does not exist
+        IF SQLCODE NOT IN (-40926, -42421) THEN  -- property graph does not exist
             RAISE;
         END IF;
 END;

@@ -108,16 +108,18 @@ Optional approach for batch document processing:
 The project is configured to work with a local Oracle 23ai Docker container:
 
 ```bash
-# Container info
-Container: oracle23ai
-Connection: system/oracle@localhost:1521/FREEPDB1
+# Start Oracle Database 23ai Free
+docker run -d -p 1521:1521 -e ORACLE_PASSWORD=Welcome12345 gvenzl/oracle-free:latest-faststart
+
+# Wait 1-2 minutes for startup, then connect
+# Connection: system/Welcome12345@localhost:1521/FREEPDB1
 
 # Extract PDF to graph CSV files
 cd extractPDF
 python extract_pdf_to_graph.py ../sample-data/diabetes-treatment-study.pdf
 
-# Load data into Oracle (from inside container or with mounted volume)
-docker exec -it oracle23ai sqlplus system/oracle@FREEPDB1
+# Load data into Oracle
+sqlplus system/Welcome12345@localhost:1521/FREEPDB1
 
 @load_extracted_graph_data.sql     # Loads graph from extractPDF/output CSVs
 @load_clinical_outcomes.sql        # Loads clinical trial data
@@ -439,8 +441,8 @@ See three_way_hybrid_query.sql for complete 3-way test suite.
 ## Current State (as of last working session)
 
 ### Working Local Docker Setup
-- Container: `oracle23ai` running Oracle 23ai
-- Connection: `system/oracle@localhost:1521/FREEPDB1`
+- Container: Oracle Database 23ai Free (`gvenzl/oracle-free:latest-faststart`)
+- Connection: `system/Welcome12345@localhost:1521/FREEPDB1`
 - Status: All tables loaded, 3-way hybrid query tested and working (32 rows)
 
 ### What's Loaded

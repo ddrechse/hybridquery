@@ -55,7 +55,7 @@ WHERE p.age > 65
 ORDER BY p.age DESC, co.effectiveness_score DESC, co.monthly_cost ASC;
 
 PROMPT
-PROMPT Results show: 32 rows (8 elderly patients × 4 treatments each)
+PROMPT Results show: 56 rows (8 elderly patients × 7 treatments each)
 PROMPT
 
 PROMPT ======================================================================
