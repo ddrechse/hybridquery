@@ -194,36 +194,37 @@ What it does: Loads clinical trial outcome data for 14 treatments including effe
 The main 3-way hybrid query from `three_way_hybrid_query.sql`:
 
 ```sql
--- Query 1: Basic 3-Way Join
+-- The 3-Way Hybrid Query
 SELECT
     p.customer_name,
     p.age,
     p.diagnosis,
-    graph_data.treatment_name AS recommended_treatment,
+    graph_data.treatment_name,
     co.effectiveness_score,
     co.side_effect_risk,
     co.monthly_cost,
     graph_data.paper_filename AS evidence_source
-FROM patients p
-JOIN (
+FROM patients p                           -- DATA SOURCE 1: Relational patient records
+  JOIN (
     SELECT entity_name AS treatment_name, condition_name, paper_filename
-    FROM GRAPH_TABLE (
-        medical_literature_kg
-        MATCH (paper IS Paper)-[m IS MENTIONS]->(treat IS Treatment)-[tr IS TREATS]->(cond IS Condition)
-        COLUMNS (paper.filename AS paper_filename,
-                 treat.entity_name AS entity_name,
-                 cond.name AS condition_name)
+    FROM GRAPH_TABLE (                    -- DATA SOURCE 2: Property graph from medical literature
+      medical_literature_kg
+      MATCH (paper IS Paper)-[IS MENTIONS]->(treat IS Treatment)-[IS TREATS]->(cond IS Condition)
+      COLUMNS (paper.filename AS paper_filename, treat.entity_name, cond.name AS condition_name)
     )
-) graph_data ON p.diagnosis = graph_data.condition_name
-JOIN clinical_outcomes co ON graph_data.treatment_name = co.treatment_name
+  ) graph_data ON p.diagnosis = graph_data.condition_name
+  JOIN clinical_outcomes co               -- DATA SOURCE 3: Relational clinical trial outcomes
+    ON graph_data.treatment_name = co.treatment_name
 WHERE p.age > 65
-ORDER BY p.age DESC, co.effectiveness_score DESC, co.monthly_cost ASC;
+  AND co.effectiveness_score >= 7.5       -- Filter: Highly effective
+  AND co.side_effect_risk <= 2.0         -- Filter: Safer for elderly
+  AND co.monthly_cost <= 500;            -- Filter: Cost constraint
 ```
 
 **Expected Result:**
-- Returns **56 rows** (8 elderly patients × 7 treatments that treat Type 2 Diabetes)
+- Returns **24 rows** (8 elderly patients × 3 best treatments that meet all criteria)
 - Each row shows: patient info + treatment + effectiveness + safety + cost + evidence source
-- Demonstrates seamless 3-way join: relational + graph + relational
+- Demonstrates seamless 3-way join with business logic filtering at database layer
 
 **Additional Queries in three_way_hybrid_query.sql:**
 - Query 2: Filtered for best treatments (effectiveness >= 7.5, side effects <= 2.0, cost <= $500)
