@@ -217,17 +217,21 @@ class GraphDataBuilder:
     def save_csv_files(self):
         """Save all graph data as CSV files
 
-        IMPORTANT: All CSV files use newline='' parameter to ensure Unix line endings (LF only).
+        IMPORTANT: All CSV files use newline='' and lineterminator='\n' to ensure Unix line endings (LF only).
+        - newline='': Prevents Python from translating \n to platform-specific endings
+        - lineterminator='\n': Ensures each record (including the last) ends with Unix LF
         This is critical for Oracle external tables which expect LF-only line terminators.
-        Without newline='', Python may write Windows-style CRLF endings on some systems,
-        causing Oracle external tables to fail with "no rows selected".
         """
 
         # Papers nodes
         if self.papers:
             csv_path = self.output_dir / 'papers_nodes.csv'
             with open(csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['node_id', 'filename', 'title', 'publication_date'])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=['node_id', 'filename', 'title', 'publication_date'],
+                    lineterminator='\n'
+                )
                 writer.writeheader()
                 writer.writerows(self.papers)
             print(f"✓ Saved {len(self.papers)} papers to {csv_path}")
@@ -236,7 +240,11 @@ class GraphDataBuilder:
         if self.treatments:
             csv_path = self.output_dir / 'treatments_nodes.csv'
             with open(csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['node_id', 'entity_name', 'treatment_type'])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=['node_id', 'entity_name', 'treatment_type'],
+                    lineterminator='\n'
+                )
                 writer.writeheader()
                 writer.writerows(self.treatments)
             print(f"✓ Saved {len(self.treatments)} treatments to {csv_path}")
@@ -245,7 +253,11 @@ class GraphDataBuilder:
         if self.conditions:
             csv_path = self.output_dir / 'conditions_nodes.csv'
             with open(csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['node_id', 'name', 'icd10_code'])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=['node_id', 'name', 'icd10_code'],
+                    lineterminator='\n'
+                )
                 writer.writeheader()
                 writer.writerows(self.conditions)
             print(f"✓ Saved {len(self.conditions)} conditions to {csv_path}")
@@ -254,7 +266,11 @@ class GraphDataBuilder:
         if self.mentions_edges:
             csv_path = self.output_dir / 'mentions_edges.csv'
             with open(csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['edge_id', 'from_node_id', 'to_node_id'])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=['edge_id', 'from_node_id', 'to_node_id'],
+                    lineterminator='\n'
+                )
                 writer.writeheader()
                 writer.writerows(self.mentions_edges)
             print(f"✓ Saved {len(self.mentions_edges)} MENTIONS edges to {csv_path}")
@@ -263,7 +279,11 @@ class GraphDataBuilder:
         if self.treats_edges:
             csv_path = self.output_dir / 'treats_edges.csv'
             with open(csv_path, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['edge_id', 'from_node_id', 'to_node_id'])
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=['edge_id', 'from_node_id', 'to_node_id'],
+                    lineterminator='\n'
+                )
                 writer.writeheader()
                 writer.writerows(self.treats_edges)
             print(f"✓ Saved {len(self.treats_edges)} TREATS edges to {csv_path}")

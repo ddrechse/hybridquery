@@ -229,27 +229,27 @@ PROMPT ======================================================================
 
 -- Load papers
 INSERT INTO papers_nodes SELECT * FROM papers_nodes_ext;
-PROMPT Loaded papers_nodes: &SQL%ROWCOUNT rows
+PROMPT Papers data loaded
 COMMIT;
 
 -- Load treatments
 INSERT INTO treatments_nodes SELECT * FROM treatments_nodes_ext;
-PROMPT Loaded treatments_nodes: &SQL%ROWCOUNT rows
+PROMPT Treatments data loaded
 COMMIT;
 
 -- Load conditions
 INSERT INTO conditions_nodes SELECT * FROM conditions_nodes_ext;
-PROMPT Loaded conditions_nodes: &SQL%ROWCOUNT rows
+PROMPT Conditions data loaded
 COMMIT;
 
 -- Load MENTIONS edges
 INSERT INTO mentions_edges SELECT * FROM mentions_edges_ext;
-PROMPT Loaded mentions_edges: &SQL%ROWCOUNT rows
+PROMPT MENTIONS edges data loaded
 COMMIT;
 
 -- Load TREATS edges
 INSERT INTO treats_edges SELECT * FROM treats_edges_ext;
-PROMPT Loaded treats_edges: &SQL%ROWCOUNT rows
+PROMPT TREATS edges data loaded
 COMMIT;
 
 PROMPT
@@ -269,6 +269,38 @@ UNION ALL
 SELECT 'MENTIONS edges', COUNT(*) FROM mentions_edges
 UNION ALL
 SELECT 'TREATS edges', COUNT(*) FROM treats_edges;
+
+PROMPT
+PROMPT ======================================================================
+PROMPT Step 5.5: Diagnostic Queries for Troubleshooting
+PROMPT ======================================================================
+PROMPT
+PROMPT These queries help diagnose data issues if the graph query returns 0 rows:
+PROMPT
+
+PROMPT Query 1: Show all condition names (check for spelling/case mismatches)
+SELECT node_id, name FROM conditions_nodes;
+
+PROMPT
+PROMPT Query 2: Show TREATS edges (verify edges exist and reference valid nodes)
+SELECT * FROM treats_edges;
+
+PROMPT
+PROMPT Query 3: Show treatments and their TREATS relationships
+SELECT t.node_id, t.entity_name, te.edge_id, te.to_node_id
+FROM treatments_nodes t
+LEFT JOIN treats_edges te ON t.node_id = te.from_node_id
+ORDER BY t.entity_name;
+
+PROMPT
+PROMPT Query 4: Show complete Paper->Treatment->Condition paths using SQL joins
+SELECT p.filename, t.entity_name, c.name AS condition_name
+FROM papers_nodes p
+JOIN mentions_edges me ON p.node_id = me.from_node_id
+JOIN treatments_nodes t ON me.to_node_id = t.node_id
+JOIN treats_edges te ON t.node_id = te.from_node_id
+JOIN conditions_nodes c ON te.to_node_id = c.node_id
+ORDER BY t.entity_name;
 
 PROMPT
 PROMPT ======================================================================
@@ -321,14 +353,14 @@ PROMPT ======================================================================
 PROMPT Query: Show all treatments that treat Type 2 Diabetes
 PROMPT
 
-SELECT t.entity_name AS treatment, c.name AS condition
+SELECT entity_name AS treatment, condition_name AS condition
 FROM GRAPH_TABLE (
     medical_literature_kg
-    MATCH (t:Treatment)-[:TREATS]->(c:Condition)
+    MATCH (d IS Paper)-[m IS MENTIONS]->(e IS Treatment)-[t IS TREATS]->(c IS Condition)
     WHERE c.name = 'Type 2 Diabetes'
-    COLUMNS (t.entity_name, c.name)
+    COLUMNS (e.entity_name AS entity_name, c.name AS condition_name)
 )
-ORDER BY t.entity_name;
+ORDER BY entity_name;
 
 PROMPT
 PROMPT ======================================================================

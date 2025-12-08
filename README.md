@@ -395,7 +395,7 @@ edge_id,from_node_id,to_node_id
 2001,101,200
 ```
 
-**Important:** CSVs must use LF (Unix) line endings, not CRLF (Windows). The `graph_builder.py` script handles this automatically with `newline=''` parameter.
+**Important:** CSVs must use LF (Unix) line endings, not CRLF (Windows). The `graph_builder.py` script handles this automatically with `newline=''` and `lineterminator='\n'` parameters.
 
 ---
 
@@ -728,7 +728,7 @@ See [`DEMO_GUIDE.md`](DEMO_GUIDE.md) for a complete 15-minute conference present
 | Neo4j + PostgreSQL (×2) | 3 in 3 DBs | 3 separate | App-layer | 200-450ms | ⚠️ Eventual |
 
 **Demonstrated Query:**
-- **32 rows**: 8 elderly patients × 4 treatments
+- **24 rows**: 8 elderly patients × 3 treatments
 - Filters by effectiveness (>= 7.5), safety (<= 2.0), cost (<= $500)
 - Shows clinical decision support with evidence-based recommendations
 
