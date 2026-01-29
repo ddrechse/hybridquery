@@ -53,3 +53,5 @@ docling-processing/output/
 *.tmp
 *.bak
 *.backup
+output/
+extractPDF/output/

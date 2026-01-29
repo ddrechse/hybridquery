@@ -15,7 +15,7 @@
 --
 -- =====================================================================
 
-SET ECHO ON
+SET ECHO OFF
 SET FEEDBACK ON
 SET DEFINE OFF
 SET PAGESIZE 100

@@ -81,6 +81,6 @@ PROMPT
 PROMPT Graph Pattern:
 PROMPT   (Paper)-[:MENTIONS]->(Treatment)-[:TREATS]->(Condition)
 PROMPT
-PROMPT Next step: Run 04_load_sample_data.sql
+PROMPT Next step: Run oracle-setup/load_patients.sql then load_clinical_outcomes.sql
 PROMPT ============================================================================
 PROMPT
