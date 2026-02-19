@@ -31,33 +31,45 @@ END;
 CREATE PROPERTY GRAPH medical_literature_kg
     VERTEX TABLES (
         -- Paper vertices
-        papers_nodes AS Paper
+        papers_nodes
             KEY (node_id)
-            PROPERTIES (node_id, filename, title, publication_date),
+            LABEL Paper
+            PROPERTIES (
+                title,
+                filename,
+                publication_date,
+                content_embedding  -- Exposed for Vector Search
+            ),
 
         -- Treatment vertices
-        treatments_nodes AS Treatment
+        treatments_nodes
             KEY (node_id)
-            PROPERTIES (node_id, entity_name, treatment_type),
+            LABEL Treatment
+            PROPERTIES (
+                entity_name,
+                treatment_type,
+                description_embedding -- Exposed for Vector Search
+            ),
 
         -- Condition vertices
-        conditions_nodes AS Condition
+        conditions_nodes
             KEY (node_id)
-            PROPERTIES (node_id, name, icd10_code)
+            LABEL Condition
+            PROPERTIES (name, icd10_code)
     )
     EDGE TABLES (
         -- MENTIONS edges: Paper -> Treatment
         mentions_edges AS MENTIONS
             KEY (edge_id)
-            SOURCE KEY (from_node_id) REFERENCES Paper (node_id)
-            DESTINATION KEY (to_node_id) REFERENCES Treatment (node_id)
+            SOURCE KEY (from_node_id) REFERENCES papers_nodes (node_id)
+            DESTINATION KEY (to_node_id) REFERENCES treatments_nodes (node_id)
             PROPERTIES (edge_id),
 
         -- TREATS edges: Treatment -> Condition
         treats_edges AS TREATS
             KEY (edge_id)
-            SOURCE KEY (from_node_id) REFERENCES Treatment (node_id)
-            DESTINATION KEY (to_node_id) REFERENCES Condition (node_id)
+            SOURCE KEY (from_node_id) REFERENCES treatments_nodes (node_id)
+            DESTINATION KEY (to_node_id) REFERENCES conditions_nodes (node_id)
             PROPERTIES (edge_id)
     );
 

@@ -53,7 +53,8 @@ class OracleGraphLoader:
             self.conn.close()
             print("🔌 Connection closed")
 
-    def add_paper(self, filename: str, title: str, publication_date: str = None) -> int:
+    def add_paper(self, filename: str, title: str, publication_date: str = None, 
+                  embedding: List[float] = None) -> int:
         """Insert paper and return new Node ID"""
         if not self.conn: self.connect()
 
@@ -61,19 +62,24 @@ class OracleGraphLoader:
             publication_date = datetime.now().strftime('%Y-%m-%d')
             
         sql = """
-            INSERT INTO papers_nodes (filename, title, publication_date)
-            VALUES (:1, :2, TO_DATE(:3, 'YYYY-MM-DD'))
-            RETURNING node_id INTO :4
+            INSERT INTO papers_nodes (filename, title, publication_date, content_embedding)
+            VALUES (:1, :2, TO_DATE(:3, 'YYYY-MM-DD'), :4)
+            RETURNING node_id INTO :5
         """
         
+        # Ensure embedding is compatible (array.array or list)
+        import array
+        embedding_val = array.array('f', embedding) if embedding else None
+
         out_id = self.cursor.var(int)
-        self.cursor.execute(sql, [filename, title[:500], publication_date, out_id])
+        self.cursor.execute(sql, [filename, title[:500], publication_date, embedding_val, out_id])
         
         new_id = out_id.getvalue()[0]
         self.stats['papers'] += 1
         return new_id
 
-    def add_treatment(self, name: str, treatment_type: str = "Pharmaceutical") -> int:
+    def add_treatment(self, name: str, treatment_type: str = "Pharmaceutical", 
+                      embedding: List[float] = None) -> int:
         """Insert treatment if not exists, return Node ID"""
         if name in self.treatment_map:
             return self.treatment_map[name]
@@ -92,18 +98,22 @@ class OracleGraphLoader:
         else:
             out_id = self.cursor.var(int)
             sql = """
-                INSERT INTO treatments_nodes (entity_name, treatment_type)
-                VALUES (:1, :2)
-                RETURNING node_id INTO :3
+                INSERT INTO treatments_nodes (entity_name, treatment_type, description_embedding)
+                VALUES (:1, :2, :3)
+                RETURNING node_id INTO :4
             """
-            self.cursor.execute(sql, [name, treatment_type, out_id])
+            
+            import array
+            embedding_val = array.array('f', embedding) if embedding else None
+
+            self.cursor.execute(sql, [name, treatment_type, embedding_val, out_id])
             node_id = out_id.getvalue()[0]
             self.stats['treatments'] += 1
             
         self.treatment_map[name] = node_id
         return node_id
 
-    def add_condition(self, name: str) -> int:
+    def add_condition(self, name: str, embedding: List[float] = None) -> int:
         """Insert condition if not exists, return Node ID"""
         if name in self.condition_map:
             return self.condition_map[name]
@@ -120,11 +130,15 @@ class OracleGraphLoader:
             
             out_id = self.cursor.var(int)
             sql = """
-                INSERT INTO conditions_nodes (name, icd10_code)
-                VALUES (:1, :2)
-                RETURNING node_id INTO :3
+                INSERT INTO conditions_nodes (name, icd10_code, description_embedding)
+                VALUES (:1, :2, :3)
+                RETURNING node_id INTO :4
             """
-            self.cursor.execute(sql, [name, icd, out_id])
+            
+            import array
+            embedding_val = array.array('f', embedding) if embedding else None
+            
+            self.cursor.execute(sql, [name, icd, embedding_val, out_id])
             node_id = out_id.getvalue()[0]
             self.stats['conditions'] += 1
             
@@ -156,21 +170,28 @@ class OracleGraphLoader:
         treatments: Set[str],
         conditions: Set[str],
         relationships: List[Tuple[str, str]],
-        publication_date: str = None
+        publication_date: str = None,
+        paper_embedding: List[float] = None,
+        treatment_embeddings: Dict[str, List[float]] = None,
+        condition_embeddings: Dict[str, List[float]] = None
     ):
         """Main orchestrator"""
         
         # 1. Paper
-        paper_id = self.add_paper(paper_filename, paper_title, publication_date)
+        paper_id = self.add_paper(paper_filename, paper_title, publication_date, paper_embedding)
         
         # 2. Treatments + Mentions
+        treatment_embeddings = treatment_embeddings or {}
         for t_name in treatments:
-            t_id = self.add_treatment(t_name)
+            t_emb = treatment_embeddings.get(t_name)
+            t_id = self.add_treatment(t_name, embedding=t_emb)
             self.add_mentions_edge(paper_id, t_id)
             
         # 3. Conditions
+        condition_embeddings = condition_embeddings or {}
         for c_name in conditions:
-            self.add_condition(c_name)
+            c_emb = condition_embeddings.get(c_name)
+            self.add_condition(c_name, embedding=c_emb)
             
         # 4. Treats Edges
         for t_name, c_name in relationships:

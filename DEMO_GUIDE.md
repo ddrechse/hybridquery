@@ -1,313 +1,150 @@
-# Oracle 23ai Hybrid Query Demo Guide
+# Oracle Hybrid Query Demo Guide: The "Architecture of Trust"
 
-## Demo Title
-**Unified Medical Intelligence: From Unstructured PDFs to Clinical Decision Support in One Query**
-
-## Demo Abstract
-This demonstration showcases Oracle Database 23ai's revolutionary hybrid query capability that unifies relational and graph data models in a single SQL statement. Using Docling to parse medical research PDFs, we extract knowledge graphs identifying treatments, conditions, and their relationships. Healthcare organizations can then query this literature-derived knowledge graph alongside traditional patient records AND clinical trial outcomes in real-time, answering critical questions like "Which evidence-based, cost-effective treatments are safest for my elderly diabetic patients?" Unlike fragmented architectures requiring separate graph databases and application-layer joins, Oracle 23ai delivers complete solutions with sub-200ms performance, full ACID compliance, and zero data movement.
+**Title:** Unified Medical Intelligence: 3-Model Fusion (Relational + Graph + Vector)
+**Theme:** Solving the "Triplet Trap" with Hybrid AI
 
 ---
 
 ## Demo Flow (15 minutes)
 
 ### Part 1: The Problem (2 minutes)
-
-**Scenario:** Healthcare provider needs to recommend evidence-based treatments for elderly Type 2 Diabetes patients.
-
-**Data Sources:**
-1. **Patient Records** (EHR system) - demographics, diagnoses, physicians
-2. **Medical Literature** (research papers) - treatment recommendations
-3. **Clinical Trial Outcomes** - effectiveness, safety, costs
-
-**Traditional Architecture Challenge:**
-```
-PostgreSQL (Patients) + Neo4j (Literature) + App Code (Join) = Complex, Slow, Expensive
-```
-
-**Oracle 23ai Solution:**
-```
-ONE Database + ONE Query = Simple, Fast, Cost-Effective
-```
+**"The Triplet Trap"**
+*   **The LinkedIn Critique:** "Naive LLM Graphs lack business logic and fail at scale."
+*   **The Issue:** If you query a graph for "Metabolic Syndrome" but it only knows "Diabetes", it fails.
+*   **The Solution:** **Oracle 3-Model Fusion**.
+    *   **Relational:** Enforces Safety & Rules (The "Conceptual Model").
+    *   **Vector:** Bridges Semantic Gaps (The "Glue").
+    *   **Graph:** Provides Evidence (The "Proof").
 
 ---
 
-### Part 2: Building the Knowledge Graph (5 minutes)
+### Part 2: Building the Data Foundation (5 minutes)
 
-#### Step 1: Show the Real PDF
-- Display `diabetes-treatment-study.pdf` - actual medical research paper
-- Point out mentions of treatments: GLP-1 Agonists, SGLT2 Inhibitors, etc.
-- Explain: "This is unstructured text - hard to query"
+#### Step 0: The Relational Baseline (Structured Truth)
+Before we add AI, we have a standard relational database with two core tables:
+1.  **PATIENTS**: Who they are (Name, Age) and what they have (Diagnosis).
+    *   *Example:* David Thompson (81), Type 2 Diabetes.
+2.  **CLINICAL_OUTCOMES**: Hard facts about treatments (Cost, Risk, Effectiveness).
+    *   *Example:* Metformin: Cheap ($4), High Effectiveness (8.5), Low Risk (1.0).
 
-#### Step 2: Extract Entities with Docling
+*This is our "Ground Truth". AI will add knowledge, but this data enforces safety.*
+
+#### Step 1: The Source Data
+*   Show `diabetes-treatment-study.pdf` (Unstructured Context).
+*   Show `clinical_trial_outcomes.xlsx` (Structured Truth).
+
+#### Step 2: The "Magic" Pipeline (PDF -> Graph + Vector)
+Execute the extraction script:
 ```bash
-cd extractPDF
-python extract_pdf_to_graph.py ../sample-data/diabetes-treatment-study.pdf
+python extractPDF/extract_pdf_with_llm.py sample-data/diabetes-treatment-study.pdf ...
 ```
 
-**Show output:**
-- ✓ Extracted 14 treatments
-- ✓ Extracted 1 condition (Type 2 Diabetes)
-- ✓ Generated 5 CSV files (papers, treatments, conditions, edges)
+**Explain the 3-Step Process happening under the hood:**
+1.  **Parse:** We use **Docling** to turn the PDF into clean Markdown (preserving tables/headers).
+2.  **Extract (LLM):** We send that text to **Llama 3.1** to identify Entites (Treatments, Conditions) and Relationships (TREATS, MENTIONS).
+3.  **Vectorize:** *Simultaneously*, we generate **Vector Embeddings** (using `nomic-embed-text`) for every node description and paper content.
 
-**Key Point:** "We transformed unstructured PDF into structured graph data automatically"
+**Key Technical Win:**
+"We don't just get a graph. We get a **Vectorized Graph**. Every node has a mathematical representation of its meaning, allowing us to do fuzzy matching later."
 
-#### Step 3: Show the Graph Structure
+#### Step 3: Verify the Data in SQL
+Show that the data is now structured and vectorized:
 ```sql
--- Query 1: What papers do we have?
-SELECT filename, title FROM papers_nodes;
-
--- Query 2: What treatments were extracted?
-SELECT entity_name FROM treatments_nodes ORDER BY entity_name;
-
--- Query 3: Show the relationships
-SELECT entity_name AS treatment, condition_name
-FROM GRAPH_TABLE (
-    medical_literature_kg
-    MATCH (t IS Treatment)-[e IS TREATS]->(c IS Condition)
-    COLUMNS (t.entity_name AS entity_name, c.name AS condition_name)
-);
+SELECT entity_name, VECTOR_DIMENSION_COUNT(description_embedding) as dims 
+FROM treatments_nodes 
+FETCH FIRST 5 ROWS ONLY;
 ```
+*   **Result:** You see "Semaglutide" with a 768-dimension vector.
+*   **Speaking Point:** "This vector is what allows us to find 'Semaglutide' even if the user searches for 'Weight loss shot'."
 
-**Result:** 4 treatments that treat Type 2 Diabetes
+### Part 2.4: Phase 0 - The Relational Disconnect (2 minutes)
 
-**Key Point:** "This is a property graph - optimized for relationship traversal"
+**Script:** `demo_relational_baseline.sql`
 
----
+#### The Problem
+Show that the Relational Database has the raw materials, but no bridge.
+1.  **Query 1:** Shows "David Thompson" (Has Diabetes).
+2.  **Query 2:** Shows "Metformin" (Effective Treatment).
+3.  **The Gap:** "There is no `diagnosis_id` column in the `clinical_outcomes` table. The database doesn't know these are related."
 
-### Part 3: Adding Clinical Trial Data (2 minutes)
+*Transition: "This is why we need a Graph."*
 
-#### Step 1: Show the Excel File
-- Open `clinical_trial_outcomes.xlsx`
-- Show columns: effectiveness_score, side_effect_risk, monthly_cost, age ranges
+### Part 2.45: Graph Inspection (The Evidence)
+**Script:** `demo_graph_inspection.sql`
 
-**Key Point:** "This is structured data - perfect for relational tables"
-
-#### Step 2: Load Clinical Outcomes
-```sql
-@load_clinical_outcomes.sql
-```
-
-**Show verification:**
-- 14 treatments loaded
-- Top 5 most effective treatments (Semaglutide: 9.0, GLP-1 Agonists: 8.5, etc.)
-- Most cost-effective (Metformin: $25/month with 7.5 effectiveness)
-
----
-
-### Part 4: The Hybrid Query "Wow" Moment (6 minutes)
-
-#### Query 1: Basic 3-Way Join
-```sql
-SELECT
-    p.customer_name,
-    p.age,
-    graph_data.treatment_name,
-    co.effectiveness_score,
-    co.monthly_cost
-FROM patients p
-JOIN (graph traversal) graph_data
-JOIN clinical_outcomes co
-WHERE p.age > 65;
-```
-
-**Result:** 32 rows (8 elderly patients × 4 treatments each)
-
-**Explain:** "We just combined THREE data sources in ONE query:
-- Relational patients
-- Graph traversal (paper→treatment→condition)
-- Relational clinical outcomes"
-
-#### Query 2: Filtered for Best Treatments
-```sql
-WHERE p.age > 65
-  AND co.effectiveness_score >= 7.5
-  AND co.side_effect_risk <= 2.0
-  AND co.monthly_cost <= 500;
-```
-
-**Result:** Only highly effective, safe, affordable treatments
-
-**Key Point:** "Business logic applied at database layer - no application code needed"
-
-#### Query 3: Ranked Recommendations
-```sql
-RANK() OVER (
-    PARTITION BY p.patient_id
-    ORDER BY effectiveness DESC, safety ASC, cost ASC
-) AS treatment_rank
-```
-
-**Result:** Each patient gets personalized ranked treatment list
-
-**Key Point:** "This is clinical decision support in real-time"
+#### The Visualization
+Let's peek under the hood. What did the AI actually build?
+1.  **Nodes:** Show extracted Treatments (e.g., SGLT2 Inhibitors) and their descriptions.
+2.  **Edges:** Show the "TREATS" relationship linking Treatments to Conditions.
+*Point: "This isn't a black box. It's a queryable table structure."*
 
 ---
 
-## The "Mic Drop" Comparison
+### Part 2.5: Phase 1 - Relational + Graph Baseline (3 minutes)
 
-### Competitor Approach (PostgreSQL + Neo4j)
+**Script:** `demo_relational_graph_only.sql`
 
-**Architecture:**
-```
-1. Query PostgreSQL for patients → 10-20ms
-2. Query Neo4j for graph traversal → 50-100ms
-3. Query PostgreSQL for clinical outcomes → 10-20ms
-4. Join results in application memory → 100-200ms
-Total: 200-450ms + application complexity
-```
+#### The Concept
+"We start with our Relational Foundation (David Thompson, 81). Now, let's layer on the **AI-Extracted Graph**."
 
-**Issues:**
-- Two databases to license, manage, secure
-- Data synchronization needed (ETL pipelines)
-- No transactional consistency
-- Application-layer complexity
-- Higher total cost of ownership
-
-### Oracle Approach
-
-**Architecture:**
-```
-1. Single SQL query → 100-200ms
-Total: 100-200ms
-```
-
-**Benefits:**
-- ONE database
-- ONE query
-- ACID transactions
-- No data movement
-- Standard SQL
-- Lower TCO
+#### The Query
+Run the script to show treatments for David found via graph traversal.
+*   **Result:** A list of treatments (e.g., Metformin, SGLT2 Inhibitors) linked to his diagnosis via medical papers.
+*   **Speaking Point:** "This is powerful. We used the **Graph** to find treatments mentioned in literature for his condition. This is the 'Hybrid' baseline."
 
 ---
 
-## Demo Queries Summary
+### Part 3: The "Graph Trap" Challenge (2 minutes)
+**Script:** `demo_challenge_graph_vs_vector.sql`
 
-### Query 1: Basic Hybrid (Show the Concept)
-32 rows combining all three data sources
+#### Act 1: The Trap (Pure Graph Failure)
+Run Query 1: Search for treatments for **"Metabolic Syndrome"**.
+*   **Result:** **0 ROWS**.
+*   **Speaking Point:** "The graph is rigid. It doesn't know the synonym. This is why pure graph projects fail."
 
-### Query 2: Filtered (Show Business Logic)
-Only effective, safe, affordable treatments
-
-### Query 3: Age-Appropriate (Show Domain Rules)
-Match patient age with recommended trial age ranges
-
-### Query 4: Cost-Effectiveness (Show Analytics)
-Rank treatments by value: effectiveness per dollar
-
-### Query 5: Clinical Decision Support (The Showstopper)
-Personalized ranked recommendations for each patient
+#### Act 2: The Solution (Vector Bridge)
+Run Query 2: Search for **"Metabolic Syndrome"** using Vector Fusion.
+*   **Result:** **Success (Diabetes Treatments found)**.
+*   **Speaking Point:** "Vector Search found that 'Metabolic Syndrome' is 85% similar to 'Type 2 Diabetes'. It bridged the gap dynamically."
+*   **Note:** This query uses a pre-calculated vector for the demo, simulating the client-side embedding.
 
 ---
 
-## Key Messages for Audience
+### Part 4: The "Wow" Moment (5 minutes)
+**Script:** `demo_phase2_vector_fusion.sql`
 
-### Technical Audience
-- **One Platform:** Relational + Graph + Vector (future) in single database
-- **Standard SQL:** Property graphs with SQL/PGQ syntax
-- **Performance:** Sub-200ms for complex multi-source joins
-- **ACID Compliance:** Full transactional guarantees
-- **No Data Movement:** Everything in one database
+#### The Scenario
+"David Thompson" (81, Diabetic) needs a **Modern**, **Safe**, and **Effective** treatment.
 
-### Business Audience
-- **60% Cost Reduction:** One database vs. multiple specialized DBs
-- **Faster Time to Insight:** Minutes to build queries, not weeks for integration
-- **Reduced Risk:** No data synchronization, no eventual consistency
-- **Future-Proof:** Vector search capability coming (for semantic queries)
-- **Proven Technology:** Oracle Database with 40+ years of enterprise reliability
+#### The Query (Query 5)
+Run the final query in the script. It combines:
+1.  **Vector:** Find treatments conceptually similar to "SGLT2 Inhibitors" (Modern).
+2.  **Relational:** `WHERE side_effect_risk < 3 AND age_limit >= 81` (Safe).
+3.  **Graph:** `COUNT(papers)` (Proven/Effective).
 
-### Healthcare Audience
-- **Patient Safety:** Real-time access to latest evidence
-- **Cost Optimization:** Factor treatment costs into recommendations
-- **Regulatory Compliance:** ACID transactions, audit trails
-- **Scalability:** Handle millions of patients, thousands of papers
-- **Integration-Ready:** Works with existing EHR systems
+**Result:**
+*   Returns a ranked list of treatments.
+*   **Speaking Point:** "We just replaced a complex RAG application with **ONE SQL QUERY**."
 
 ---
 
-## Demo Assets
+## Key Messages for Q&A
 
-### Files Created
-1. **`diabetes-treatment-study.pdf`** - Real medical research paper
-2. **`clinical_trial_outcomes.xlsx`** - Treatment effectiveness data
-3. **`extract_pdf_to_graph.py`** - Docling-based PDF extractor
-4. **`load_clinical_outcomes.sql`** - Clinical data loader
-5. **`three_way_hybrid_query.sql`** - 5 demonstration queries
+**Q: Why not just use a Vector DB?**
+A: Vectors give you similarity, but they don't give you *facts*. You need the Relational data to enforce safety rules (e.g., "Do not give this to an 81-year-old").
 
-### Database Objects
-- **Tables:** patients, papers_nodes, treatments_nodes, conditions_nodes, mentions_edges, treats_edges, clinical_outcomes
-- **Property Graph:** medical_literature_kg
+**Q: Why not just use a Graph DB?**
+A: Graphs are brittle. As we showed with "Metabolic Syndrome", if your ontology isn't perfect, the query fails. Vectors provide the flexibility.
 
-### Sample Results
-- 1 PDF → 14 treatments extracted
-- 10 patients (8 elderly)
-- 4 treatments that treat Type 2 Diabetes
-- 32 patient-treatment combinations
-- Filtered to ~12 "best" recommendations
+**Q: What is the "Architecture of Trust"?**
+A: It's grounding AI in your Enterprise Relational Data. The AI (Vector/Graph) provides suggestions, but the Relational DB provides the constraints.
 
 ---
 
-## Q&A Preparation
-
-### Expected Questions
-
-**Q: Can Oracle do vector search too?**
-A: Yes! Oracle 23ai includes AI Vector Search. We could add semantic similarity queries to find similar papers or treatments. That's the next enhancement to this demo.
-
-**Q: How does this compare to specialized graph databases?**
-A: Specialized graph DBs (Neo4j, TigerGraph) excel at graph-only workloads. Oracle 23ai excels when you need to combine graph with relational data - which is most real-world scenarios. You avoid the integration complexity.
-
-**Q: What about performance at scale?**
-A: Oracle's property graphs use the same optimized storage and query engine as relational tables. We've tested with billions of nodes and edges. Plus, you get partitioning, indexing, and all Oracle performance features.
-
-**Q: Is this production-ready?**
-A: Yes. Property graphs are a core feature of Oracle Database 23ai. Customers are using this in production for fraud detection, supply chain, recommendation engines, and healthcare.
-
-**Q: What's the migration path from Neo4j?**
-A: Oracle provides tools to import Neo4j graph models. Most customers find it straightforward - the hard part is usually migrating the surrounding relational data, which you don't need to do with Oracle.
-
----
-
-## Success Metrics
-
-After this demo, audience should understand:
-
-1. ✅ Oracle can combine relational + graph data in single queries
-2. ✅ Docling can extract structured knowledge from unstructured PDFs
-3. ✅ Hybrid queries eliminate multi-database complexity
-4. ✅ Real-world benefit: clinical decision support in <200ms
-5. ✅ Oracle 23ai is a unified platform for modern data workloads
-
----
-
-## Next Steps for Attendees
-
-**Want to try it?**
-1. Download Oracle Database 23ai Free (docker pull gvenzl/oracle-free:23.26.0)
-2. Access demo code: [GitHub repo link]
-3. Follow QUICKSTART.md for 10-minute setup
-4. Join Oracle Property Graph community
-
-**Enterprise deployment?**
-1. Contact Oracle sales for proof-of-concept
-2. Oracle Professional Services can assist with migration
-3. Training available: Oracle Property Graph certification
-
----
-
-## Files to Bring to Demo
-
-### Required
-- ✅ Laptop with Oracle 23ai database running
-- ✅ SQL client (SQLcl or SQL Developer)
-- ✅ diabetes-treatment-study.pdf (to show source)
-- ✅ clinical_trial_outcomes.xlsx (to show source)
-
-### Optional
-- ✅ Backup slides explaining architecture
-- ✅ Printed handout with sample queries
-- ✅ QR code linking to demo GitHub repo
-
----
-
-**This demo is ready for your conference presentation!** 🎉
+## Preparation Checklist
+1.  **Reset Environment:** Run the "Zero-to-Demo" steps in `README.md`.
+2.  **Pre-load Data:** Ensure PDFs are processed (`extract_pdf_with_llm.py`).
+3.  **Open SQL Client:** Connect to `system/Welcome12345`.
+4.  **Have Scripts Ready:**
+    *   `demo_challenge_graph_vs_vector.sql`
+    *   `demo_phase2_vector_fusion.sql`

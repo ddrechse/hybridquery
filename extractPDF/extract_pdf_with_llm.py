@@ -28,7 +28,7 @@ except ImportError:
     print("WARNING: Docling not installed. Install with: pip install docling")
 
 try:
-    from langchain_ollama import ChatOllama
+    from langchain_ollama import ChatOllama, OllamaEmbeddings
     from langchain_core.prompts import ChatPromptTemplate
     from pydantic import ValidationError
     LANGCHAIN_AVAILABLE = True
@@ -63,7 +63,7 @@ class PDFToGraphExtractorLLM:
             if not ORACLE_AVAILABLE:
                 raise RuntimeError("Oracle Loader could not be imported. Check oracledb dependency.")
             print(f"🔄 Using Direct Database Loader (User: {self.db_config['user']})")
-            self.loader = OracleGraphLoader(
+            self.oracle_loader = OracleGraphLoader(
                 user=self.db_config['user'],
                 password=self.db_config['password'],
                 dsn=self.db_config['dsn']
@@ -79,6 +79,10 @@ class PDFToGraphExtractorLLM:
             # Initialize Structured Output LLM
             llm = ChatOllama(model=model_name, base_url=base_url, temperature=0, format="json")
             self.llm = llm
+            
+            # Initialize Embedding Model
+            print(f"🧠 Initializing Embedding Model (nomic-embed-text)...")
+            self.embed_model = OllamaEmbeddings(model="nomic-embed-text", base_url=base_url)
 
     def parse_pdf_with_docling(self, pdf_path: Path) -> Dict:
         """Parse PDF using Docling (Same as original)"""
@@ -90,14 +94,28 @@ class PDFToGraphExtractorLLM:
         result = self.doc_converter.convert(str(pdf_path))
         doc = result.document
         
-        # Extract title
+        # Extract title - try markdown first, then PDF metadata
         markdown = doc.export_to_markdown()
         lines = markdown.split('\n')
-        title = "Untitled Document"
+        title = None
         for line in lines[:20]:
             if line.strip().startswith('# '):
                 title = line.replace('# ', '').strip()
                 break
+        
+        # If no title found in markdown, try PDF metadata
+        if not title or title == "Untitled Document":
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(pdf_path))
+                if reader.metadata and reader.metadata.title:
+                    title = reader.metadata.title
+            except Exception as e:
+                print(f"   Note: Could not read PDF metadata title: {e}")
+        
+        # Final fallback
+        if not title:
+            title = "Untitled Document"
         
         return {
             'title': title,
@@ -153,7 +171,16 @@ class PDFToGraphExtractorLLM:
             print(f"   ❌ LLM Extraction failed: {e}")
             return ExtractionResult()
 
-    def convert_to_builder_format(self, llm_result: ExtractionResult) -> Dict:
+    def generate_embedding(self, text: str) -> List[float]:
+        """Generate embedding vector for text"""
+        if not LANGCHAIN_AVAILABLE: return []
+        try:
+            return self.embed_model.embed_query(text)
+        except Exception as e:
+            print(f"   ⚠️ Embedding generation failed: {e}")
+            return []
+
+    def convert_to_builder_format(self, llm_result: ExtractionResult, title: str) -> Dict:
         """Convert Pydantic result to format expected by loader"""
         
         treatments = set()
@@ -177,6 +204,7 @@ class PDFToGraphExtractorLLM:
                 relationships.append((r.treatment_name, r.condition_name))
         
         return {
+            'title': title,
             'treatments': treatments,
             'conditions': conditions,
             'relationships': relationships
@@ -196,28 +224,44 @@ class PDFToGraphExtractorLLM:
         llm_result = self.extract_with_llm(parsed['text'])
         
         # 3. Convert
-        entities = self.convert_to_builder_format(llm_result)
+        entities = self.convert_to_builder_format(llm_result, parsed['title'])
         
         print(f"   ► Found {len(entities['treatments'])} treatments")
         print(f"   ► Found {len(entities['conditions'])} conditions")
         print(f"   ► Found {len(entities['relationships'])} relationships")
 
-        # 4. Load (DB or CSV)
-        # 4. Load (DB)
+        # 4. Generate Embeddings
+        print("🧠 Generating Embeddings...")
+        paper_embedding = self.generate_embedding(parsed['text'][:1000]) # First 1000 chars as content summary
+        
+        treatment_embeddings = {}
+        for t_name in entities['treatments']:
+            # Contextual embedding: "TreatmentName treatment for Condition"
+            # Simple approach: "treatment_name"
+            treatment_embeddings[t_name] = self.generate_embedding(f"Medical treatment: {t_name}")
+
+        condition_embeddings = {}
+        for c_name in entities['conditions']:
+            condition_embeddings[c_name] = self.generate_embedding(f"Medical condition: {c_name}")
+
+        # 5. Load (DB)
         if self.use_db:
             print(f"🚀 Inserting directly into Oracle Database...")
             
-            self.loader.build_graph_from_entities(
-                paper_filename=parsed['filename'],
-                paper_title=parsed['title'],
+            self.oracle_loader.build_graph_from_entities(
+                paper_title=entities['title'],
+                paper_filename=pdf_path.name,
                 treatments=entities['treatments'],
                 conditions=entities['conditions'],
                 relationships=entities['relationships'],
-                publication_date=publication_date
+                publication_date=publication_date,
+                paper_embedding=paper_embedding,
+                treatment_embeddings=treatment_embeddings,
+                condition_embeddings=condition_embeddings
             )
             
-            # 5. Save/Commit
-            self.loader.close() # Commits transaction
+            # 6. Save/Commit
+            self.oracle_loader.close() # Commits transaction
             print("\n✅ Database Insert Complete!")
 
 def main():
